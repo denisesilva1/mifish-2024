@@ -2,15 +2,15 @@ library(phyloseq)
 library(ggplot2)
 library(RColorBrewer)
 library(stringr)
-library(tidyr)
-library(dplyr)
+library(tidyverse)
 library(readr)
 
-taxa_level <- "Genus"
+taxa_level <- "Species"
+#taxa_level <- "Genus"
 #taxa_level <- "Family"
 
-topn <- 10
-#topn <- 20
+#topn <- 10
+topn <- 20
 
 pal <- brewer.pal(12,"Paired") 
 # Add more colors to this palette :
@@ -25,25 +25,43 @@ physeq.norare <-
   read_rds("./mifish-21.22/data/physeq_norare.rds")
 physeq.norare@phy_tree <- NULL
 
-physeq.norare <- phyloseq::merge_phyloseq(physeq.norare, physeq.norare23)
+physeq.norare <- 
+  phyloseq::merge_phyloseq(physeq.norare, physeq.norare23)
 
-write_rds(physeq.norare, "./mifish-21.22.23/data/physeq-norare-21.22.23.rds")
+#write_rds(physeq.norare, "./mifish-21.22.23/data/physeq-norare-21.22.23.rds")
 
 sample_data(physeq.norare)$Habitat <- 
   as.factor(sample_data(physeq.norare)$Habitat)
 
 sample_data(physeq.norare)$hab_year <- 
-  paste0(sample_data(physeq.norare)$Habitat, sample_data(physeq.norare)$Year)
+  paste0(sample_data(physeq.norare)$Habitat, 
+         sample_data(physeq.norare)$Year)
 
+sample_data(physeq.norare)$common <- "common"
+
+# top2 <- 
+#   physeq.norare %>% 
+#   merge_samples("common") %>% 
+#   tax_glom(taxrank = taxa_level) %>% 
+#   transform_sample_counts(function(x) {(x/sum(x))*100}) %>% 
+#   psmelt() %>% 
+#   as_tibble() %>% 
+#   dplyr::select(taxa_level, 
+#                 Abundance) %>% 
+#   rename(Taxa = taxa_level) %>% 
+#   mutate(Taxa = str_sub(Taxa, start = 3))
+  
 relabund <-
   physeq.norare %>% 
   merge_samples("hab_year") %>% 
   #tax_glom(taxrank = "Genus") %>% 
   tax_glom(taxrank = taxa_level) %>% 
-  transform_sample_counts(function(x) {x/sum(x)}) %>% 
+  transform_sample_counts(function(x) {(x/sum(x))*100}) %>% 
   psmelt() %>% 
+  as_tibble() %>% 
   #dplyr::select(Genus, Year, Habitat, Abundance) %>% 
-  dplyr::select(taxa_level, Year, Habitat, Abundance) %>% 
+  dplyr::select(taxa_level, Year, Habitat, 
+                Abundance, Latitude, Longitude) %>% 
   mutate(Habitat = as.character(Habitat)) %>% 
   mutate(Habitat = case_when(
     Habitat == '1' ~ 'Bay',
@@ -51,27 +69,22 @@ relabund <-
     Habitat == '3' ~ 'Mid-Lagoon',
     Habitat == '4' ~ 'Reef Crest',
     Habitat == '5' ~ 'Reef Pass')
-    
-    #Family = stringr::str_remove(Family, "F_")
-    #Genus = stringr::str_remove(Genus, "G_")
-  ) 
+  ) %>% 
+  rename(Taxa = taxa_level) %>% 
+  mutate(Taxa = str_sub(Taxa, start = 3))
 
-if(taxa_level == "Genus"){
-  relabund <- relabund %>% 
-    mutate(Genus = stringr::str_remove(Genus, "G_")) %>% 
-    rename(Taxa = Genus)
-} else {
-  relabund <- relabund %>% 
-    mutate(Family = stringr::str_remove(Family, "F_")) %>% 
-    rename(Taxa = Family)
-}
-
+relabund %>% 
+  dplyr::group_by(Taxa) %>% 
+  #dplyr::group_by(Genus) %>% 
+  dplyr::summarise(Abundance = mean(Abundance, na.rm = TRUE)) %>% 
+  arrange(desc(Abundance)) %>% 
+  View()
 
 top <- relabund %>% 
   dplyr::group_by(Taxa) %>% 
   #dplyr::group_by(Genus) %>% 
   dplyr::summarise(Abundance = mean(Abundance, na.rm = TRUE)) %>% 
-  arrange(desc(Abundance)) %>% 
+  arrange(desc(Abundance)) #%>% View()
   slice_head(n = topn) %>% 
   pull(Taxa)
 #pull(Genus)

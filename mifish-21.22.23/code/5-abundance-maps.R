@@ -10,8 +10,11 @@ library(colorspace)
 #Geospatial layers:
 moorea <- st_read('./project-data/map-data/moorea.shp')
 
-topn <- 10
-taxa_level <- 'Genus'
+#topn <- 10
+topn <- 20
+taxa_level <- "Species"
+#taxa_level <- "Genus"
+#taxa_level <- "Family"
 
 pal <- brewer.pal(12,"Paired") 
 # Add more colors to this palette :
@@ -20,7 +23,6 @@ pal <- colorRampPalette(pal)(topn)
 dark <- darken(pal, 0.85)
 light <- lighten(pal, 0.99)
 
-#write_rds(top, "./mifish-21.22.23/data/top20_genus.rds")
 top.names <- 
   read_rds(paste0("./mifish-21.22.23/data/top",topn,"_",taxa_level,".rds"))
 
@@ -30,30 +32,22 @@ top.names <- top.names[order(top.names)]
 physeq.norare <- 
   readRDS("./mifish-21.22.23/data/physeq-norare-21.22.23.rds") 
 
-# sample_data(physeq.rare)$Habitat <- 
-#   as.factor(sample_data(physeq.rare)$Habitat)
-
-# sample_data(physeq.rare)$hab_year <- 
-#   paste0(sample_data(physeq.rare)$Habitat, sample_data(physeq.rare)$Year)
-
 relabund <-
   physeq.norare %>% 
-  tax_glom(taxrank = "Genus") %>% 
-  transform_sample_counts(function(x) {x/sum(x)}) %>% 
+  tax_glom(taxrank = taxa_level) %>% 
+  transform_sample_counts(function(x) {(x/sum(x))*100}) %>% 
   psmelt() %>% 
-  dplyr::select(Site, Genus, Year, Habitat, 
+  dplyr::select(Site, taxa_level, Year, Habitat, 
                 Abundance, Latitude, Longitude) %>% 
-  mutate(
-    #Family = stringr::str_remove(Family, "F_")
-    Genus = stringr::str_remove(Genus, "G_")
-  ) %>% 
-  group_by(Site, Genus, Year) %>% 
+  rename(Taxa = taxa_level) %>% 
+  mutate(Taxa = 
+           str_sub(Taxa, start = 3)) %>% 
+  group_by(Site, Taxa, Year) %>% 
   slice(which.max(Abundance))
 
 tax_top <- relabund %>% 
-  #filter(Family %in% top)
-  filter(Genus %in% top.names) %>% 
-  group_by(Site, Genus, Year) %>% 
+  filter(Taxa %in% top.names) %>% 
+  group_by(Site, Taxa, Year) %>% 
   slice(which.max(Abundance)) %>% 
   st_as_sf(coords = c("Longitude", "Latitude"))
 
@@ -71,8 +65,8 @@ mytheme <- theme(legend.position="bottom",
 for(i in 1:length(top.names)){
   midpoint <- tax_top %>% 
     st_drop_geometry() %>% 
-    filter(Genus == top.names[i]) %>% 
-    group_by(Genus) %>% 
+    filter(Taxa == top.names[i]) %>% 
+    group_by(Taxa) %>% 
     summarise(mn = min(Abundance, na.rm = T),
               mx = max(Abundance, na.rm = T)) %>% 
     mutate(midpoint = (mx - mn)/3) %>% 
@@ -80,7 +74,7 @@ for(i in 1:length(top.names)){
   
   tmp <- 
     tax_top %>% 
-    filter(Genus == top.names[i]) %>% 
+    filter(Taxa == top.names[i]) %>% 
     arrange(-Abundance)
   
   m <- ggplot() +
@@ -99,21 +93,24 @@ for(i in 1:length(top.names)){
     guides(color = guide_colourbar(barwidth = 15)) +
     facet_wrap(~Year, ncol = 3)
   
-  ggsave(paste0("./mifish-21.22.23/maps/relabund_",top.names[i],"_21.22.23.png"), 
+  ggsave(paste0("./mifish-21.22.23/maps/relabund_", 
+                taxa_level, 
+                "_",
+                top.names[i],"_21.22.23.png"), 
          width = 10.75, height = 4, dpi=600)
 }
 
 
-chlorurus <- 
-  relabund %>% 
-  filter(Genus == "Chlorurus") %>% 
-  select(Site, Genus, Abundance, Year) %>%
-  mutate(site_year = paste0(Site, "_", Year)) %>% 
-  left_join(
-    read_rds("./mifish-21.22.23/data/alpha-diversity-metrics-12s-rare1000.rds") %>% 
-      dplyr::select(-Site, -Year),
-    join_by(site_year)
-  )
-
-write_rds(chlorurus, 
-          './mifish-21.22.23/data/chlorurus-rel-abund-biodiversity-metrics-21.22.23.rds')
+# chlorurus <- 
+#   relabund %>% 
+#   filter(Genus == "Chlorurus") %>% 
+#   select(Site, Genus, Abundance, Year) %>%
+#   mutate(site_year = paste0(Site, "_", Year)) %>% 
+#   left_join(
+#     read_rds("./mifish-21.22.23/data/alpha-diversity-metrics-12s-rare1000.rds") %>% 
+#       dplyr::select(-Site, -Year),
+#     join_by(site_year)
+#   )
+# 
+# write_rds(chlorurus, 
+#           './mifish-21.22.23/data/chlorurus-rel-abund-biodiversity-metrics-21.22.23.rds')
